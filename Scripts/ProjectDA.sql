@@ -144,9 +144,10 @@ LEFT JOIN economies e
 ON c.country = e.country 
 ;
 
+-- tabulka náboženství - nesmyslná data, která vyjadřují roky v budoucnu. Jako joke jsem si prohlédl Českou republiku a ateismus stále vítězí...
 SELECT 
 *
 FROM 
-covid19_tests ct 
-
+religions r
+WHERE country = 'czech republic'
 
