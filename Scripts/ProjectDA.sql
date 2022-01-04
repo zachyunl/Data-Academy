@@ -82,15 +82,15 @@ LEFT JOIN countries c
 ON tjzct.country = c.country 
 ;
 
--- doplnění do tabulky potvrzené případy, testy v přepočtu na populaci a 1M obyvatel
+-- doplnění do tabulky potvrzené případy, testy v přepočtu na populaci a 1M obyvatel, data jsou za roky 2020 a 2021
 SELECT 
 *,
 (confirmed / population) * 1000000 AS 'confirmed/1M pop' ,
 (tests_performed / population) * 1000000 AS 'test/1M pop' 
 FROM 
 t_jiri_zachar_confirmed_tests_population
-
-
+GROUP BY country 
+;
 -- doplnění sloupce weekend dle České republiky sobota a neděle je víkend, neberou se v potaz anomálie z jiných částí světa, kdy je víkend např. čtvrtek a pátek
 CREATE TABLE t_jiri_zachar_confirmed_weekend AS
 SELECT
@@ -129,15 +129,20 @@ t_jiri_zachar_country_leap
 GROUP BY country , date
 
 -- propojení tabulek země a ekonomika, výpočet hustoty zalidnění dle jednotlivých let bere se v potaz pouze změna počtu obyvatel, nikoliv velikost území
+-- HDP na obyvatele, GINI koeficient, dětská úmrtnost, medián věku obyvatel v roce 2018
 SELECT 
 c.country ,
-c.surface_area ,
 c.population ,
-e.population / c.surface_area AS 'population density'
+round ((e.population / c.surface_area),3) AS 'population density',
+e.GDP,
+e.gini ,
+e.mortaliy_under5 ,
+c.median_age_2018 
 FROM
 countries c 
 LEFT JOIN economies e 
 ON c.country = e.country 
+;
 
 SELECT 
 *
