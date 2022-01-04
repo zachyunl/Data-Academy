@@ -82,8 +82,11 @@ LEFT JOIN countries c
 ON tjzct.country = c.country 
 ;
 
+-- doplnění do tabulky potvrzené případy, testy v přepočtu na populaci a 1M obyvatel
 SELECT 
-*
+*,
+(confirmed / population) * 1000000 AS 'confirmed/1M pop' ,
+(tests_performed / population) * 1000000 AS 'test/1M pop' 
 FROM 
 t_jiri_zachar_confirmed_tests_population
 
