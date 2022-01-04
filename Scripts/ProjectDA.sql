@@ -44,6 +44,8 @@ Výstup: Pomozte Vašemu kolegovi s daným úkolem. Výstupem by měla být tabu
 DROP TABLE
 t_jiri_zachar_confirmed ,
 t_jiri_zachar_confirmed_weekend 
+t_jiri_zachar_confirmed_tests
+t_jiri_zachar_confirmed_tests_population
 ;
 
 -- vytvoření základní tabulky pouze potvrzených případů - datum, země, potvrzené případy
@@ -85,7 +87,6 @@ SELECT
 FROM 
 t_jiri_zachar_confirmed_tests_population
 
--- vytvoření tabulky počet obyvatel státu  
 
   -- doplnění sloupce weekend dle České republiky sobota a neděle je víkend, neberou se v potaz anomálie z jiných částí světa, kdy je víkend např. čtvrtek a pátek
 CREATE TABLE t_jiri_zachar_confirmed_weekend AS
