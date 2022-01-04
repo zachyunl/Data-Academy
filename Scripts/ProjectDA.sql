@@ -91,7 +91,7 @@ FROM
 t_jiri_zachar_confirmed_tests_population
 
 
-  -- doplnění sloupce weekend dle České republiky sobota a neděle je víkend, neberou se v potaz anomálie z jiných částí světa, kdy je víkend např. čtvrtek a pátek
+-- doplnění sloupce weekend dle České republiky sobota a neděle je víkend, neberou se v potaz anomálie z jiných částí světa, kdy je víkend např. čtvrtek a pátek
 CREATE TABLE t_jiri_zachar_confirmed_weekend AS
 SELECT
 *,
@@ -127,6 +127,17 @@ END AS seasons*/
 FROM 
 t_jiri_zachar_country_leap 
 GROUP BY country , date
+
+-- propojení tabulek země a ekonomika, výpočet hustoty zalidnění dle jednotlivých let bere se v potaz pouze změna počtu obyvatel, nikoliv velikost území
+SELECT 
+c.country ,
+c.surface_area ,
+c.population ,
+e.population / c.surface_area AS 'population density'
+FROM
+countries c 
+LEFT JOIN economies e 
+ON c.country = e.country 
 
 SELECT 
 *
