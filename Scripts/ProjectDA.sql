@@ -145,9 +145,73 @@ ON c.country = e.country
 ;
 
 -- tabulka náboženství - nesmyslná data, která vyjadřují roky v budoucnu. Jako joke jsem si prohlédl Českou republiku a ateismus stále vítězí...
+-- nakonec použiji jako základ cvičení, které jsme dělali, nemá smysl vymýšlet kolo...
+SELECT r.country , r.religion , 
+    round( r.population / r2.total_population_2020 * 100, 2 ) as religion_share_2020
+FROM religions r 
+JOIN (
+        SELECT r.country , r.year,  sum(r.population) as total_population_2020
+        FROM religions r 
+        WHERE r.year = 2020 and r.country != 'All Countries'
+        GROUP BY r.country
+    ) r2
+    ON r.country = r2.country
+    AND r.year = r2.year
+    AND r.population > 0
+;
+
+-- tabulka rozdíl mezi očekávanou dobou dožití v roce 1965 a 2015
+SELECT a.country, a.life_exp_1965 , b.life_exp_2015,
+    round( b.life_exp_2015 - a.life_exp_1965, 2 ) as life_exp_diff
+FROM (
+    SELECT le.country , le.life_expectancy as life_exp_1965
+    FROM life_expectancy le 
+    WHERE year = 1965
+    ) a JOIN (
+    SELECT le.country , le.life_expectancy as life_exp_2015
+    FROM life_expectancy le 
+    WHERE year = 2015
+    ) b
+    ON a.country = b.country
+;
+
+-- tabulka pro průměrnou denní teplotu
+SELECT 
+c.country, c.date, c.confirmed , lt.iso3 , c2.capital_city , w.max_temp
+FROM covid19_basic as c
+JOIN lookup_table lt 
+    on c.country = lt.country 
+    and c.country = 'France'
+    and month(c.date) = 10
+    JOIN countries c2
+    on lt.iso3 = c2.iso3
+JOIN ( SELECT w.city , w.date , max(w.temp) as max_temp
+        FROM weather w 
+        GROUP BY w.city, w.date) w
+    on c2.capital_city = w.city 
+    and c.date = w.date
+ORDER BY c.date desc
+;
+
+SELECT 
+c.country, c.date, c.confirmed , lt.iso3 , c2.capital_city #, w.max_temp
+FROM covid19_basic as c
+JOIN lookup_table lt 
+    on c.country = lt.country 
+    and c.country = 'Czechia'
+    and month(c.date) = 10
+    JOIN countries c2
+    on lt.iso3 = c2.iso3
+JOIN ( SELECT w.city , w.date , max(w.temp) as max_temp
+        FROM weather w 
+        ) w
+    on c2.capital_city = w.city 
+    and c.date = w.date
+ORDER BY c.date desc
+;
+
 SELECT 
 *
 FROM 
-religions r
-WHERE country = 'czech republic'
-
+covid19_basic cb 
+WHERE country = 'czechia'
