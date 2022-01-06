@@ -48,28 +48,41 @@ t_jiri_zachar_confirmed_tests
 t_jiri_zachar_confirmed_tests_population
 ;
 
--- vytvoření základní tabulky pouze potvrzených případů - datum, země, potvrzené případy
-CREATE TABLE t_jiri_zachar_confirmed AS 
-SELECT 
-   date,
-   country,
-   confirmed
-   FROM covid19_basic_differences cbd 
-WHERE confirmed IS NOT NULL 
+-- vytvoření základní tabulky pouze potvrzených případů - datum, země, potvrzené případy, iso3 z důvodu joinování na další tabulky
+CREATE OR REPLACE
+TABLE t_jiri_zachar_confirmed AS 
+SELECT
+	cbd.date,
+	cbd.country,
+	cbd.confirmed ,
+	lt.iso3
+FROM
+	covid19_basic_differences cbd
+JOIN lookup_table lt  
+ON
+	cbd.country = lt.country
+WHERE
+	cbd.confirmed IS NOT NULL 
 ;
+SELECT 
+*
+FROM 
+t_jiri_zachar_confirmed_tests
+GROUP BY country 
 
 -- vytvoření tabulky s potvrzenými případy a provedenými testy
-CREATE TABLE t_jiri_zachar_confirmed_tests
+CREATE OR REPLACE TABLE t_jiri_zachar_confirmed_tests
 SELECT 
 tjzc.date,
 tjzc.country,
 tjzc.confirmed,
+tjzc.iso3,
 ct.tests_performed
 FROM 
 t_jiri_zachar_confirmed tjzc 
-LEFT JOIN covid19_tests ct 
+JOIN covid19_tests ct 
 ON tjzc.date = ct.date
-AND tjzc.country = ct.country 
+AND tjzc.iso3 = ct.ISO 
 ;
 
 -- vytvoření tabulky s potvrzenými případy a provedenými testy a populací
