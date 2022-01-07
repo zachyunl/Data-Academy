@@ -54,66 +54,87 @@ TABLE t_jiri_zachar_confirmed AS
 SELECT
 	cbd.date,
 	cbd.country,
-	cbd.confirmed ,
-	lt.iso3
+	cbd.confirmed
 FROM
 	covid19_basic_differences cbd
-JOIN lookup_table lt  
-ON
-	cbd.country = lt.country
-WHERE
-	cbd.confirmed IS NOT NULL 
+WHERE confirmed IS NOT NULL 
 ;
-SELECT 
-*
-FROM 
-t_jiri_zachar_confirmed_tests
-GROUP BY country 
+   
+/* joinutí k tabulce confirmed ISO3 z důvodu navazování dalších tabulek. Bohužel jsou v některých tabulkách rozdílné názvy zemí a nejbezečnější to je 
+ joinovat přes ISO. */
+CREATE OR REPLACE 
+TABLE t_jiri_zachar_confirmed_iso AS
+SELECT
+	tjzc.*,
+	lt.iso3
+FROM
+	t_jiri_zachar_confirmed tjzc
+JOIN lookup_table lt
+ON
+	tjzc.country = lt.country 
+WHERE lt.province IS NULL 
+;
 
 -- vytvoření tabulky s potvrzenými případy a provedenými testy
-CREATE OR REPLACE TABLE t_jiri_zachar_confirmed_tests
-SELECT 
-tjzc.date,
-tjzc.country,
-tjzc.confirmed,
-tjzc.iso3,
-ct.tests_performed
-FROM 
-t_jiri_zachar_confirmed tjzc 
-JOIN covid19_tests ct 
-ON tjzc.date = ct.date
-AND tjzc.iso3 = ct.ISO 
+CREATE OR REPLACE
+TABLE t_jiri_zachar_confirmed_tests
+SELECT
+	tjzci.date,
+	tjzci.country,
+	tjzci.confirmed,
+	ct.tests_performed,
+	tjzci.iso3
+FROM
+	t_jiri_zachar_confirmed_iso tjzci
+LEFT JOIN covid19_tests ct 
+ON
+	tjzci.date = ct.date
+	AND tjzci.iso3 = ct.ISO 
 ;
 
 -- vytvoření tabulky s potvrzenými případy a provedenými testy a populací
-CREATE TABLE t_jiri_zachar_confirmed_tests_population
-SELECT 
-tjzct.*,
-c.population 
-FROM t_jiri_zachar_confirmed_tests tjzct 
+CREATE OR REPLACE
+TABLE t_jiri_zachar_confirmed_tests_population
+SELECT
+	tjzct.*,
+	c.population
+FROM
+	t_jiri_zachar_confirmed_tests tjzct
 LEFT JOIN countries c 
-ON tjzct.country = c.country 
+ON
+	tjzct.iso3 = c.iso3 
 ;
 
 -- doplnění do tabulky potvrzené případy, testy v přepočtu na populaci a 1M obyvatel, data jsou za roky 2020 a 2021
-SELECT 
-*,
-(confirmed / population) * 1000000 AS 'confirmed/1M pop' ,
-(tests_performed / population) * 1000000 AS 'test/1M pop' 
-FROM 
-t_jiri_zachar_confirmed_tests_population
-GROUP BY country 
-;
--- doplnění sloupce weekend dle České republiky sobota a neděle je víkend, neberou se v potaz anomálie z jiných částí světa, kdy je víkend např. čtvrtek a pátek
-CREATE TABLE t_jiri_zachar_confirmed_weekend AS
+CREATE OR REPLACE
+TABLE t_jiri_zachar_confirmed_tests_population_1M
 SELECT
-*,
-CASE WHEN weekday(date) > 4 THEN 1
-ELSE 0 
-END AS weekend 
-FROM  
-t_jiri_zachar_confirmed tjzc 
+	*,
+	(confirmed / population) * 1000000 AS 'confirmed/1M pop' ,
+	(tests_performed / population) * 1000000 AS 'test/1M pop'
+FROM
+	t_jiri_zachar_confirmed_tests_population
 ;
+
+-- doplnění sloupce weekend dle České republiky sobota a neděle je víkend, neberou se v potaz anomálie z jiných částí světa, kdy je víkend např. čtvrtek a pátek
+CREATE OR REPLACE
+TABLE t_jiri_zachar_confirmed_weekend AS
+SELECT
+	*,
+	CASE
+		WHEN weekday(date) > 4 THEN 1
+		ELSE 0
+	END AS weekend
+FROM
+	t_jiri_zachar_confirmed_tests_population_1m tjzctpm 
+;
+
+SELECT 
+*
+FROM 
+t_jiri_zachar_confirmed_weekend tjzcw 
+ORDER BY `date` 
+
 
 -- přestupný rok s chybou v letech 2100, 2200 apod.
 CREATE TABLE t_jiri_zachar_country_leap AS
@@ -141,24 +162,39 @@ FROM
 t_jiri_zachar_country_leap 
 GROUP BY country , date
 
--- propojení tabulek země a ekonomika, výpočet hustoty zalidnění dle jednotlivých let bere se v potaz pouze změna počtu obyvatel, nikoliv velikost území
--- HDP na obyvatele, GINI koeficient, dětská úmrtnost, medián věku obyvatel v roce 2018
-SELECT 
-c.country ,
-c.population ,
-round ((e.population / c.surface_area),3) AS 'population density',
-e.GDP,
-e.gini ,
-e.mortaliy_under5 ,
-c.median_age_2018 
-FROM
-countries c 
-LEFT JOIN economies e 
-ON c.country = e.country 
-;
+/* propojení tabulek země a ekonomika, výpočet hustoty zalidnění dle jednotlivých let bere se v potaz pouze změna počtu obyvatel, nikoliv velikost území
+ HDP na obyvatele, GINI koeficient, dětská úmrtnost, medián věku obyvatel v roce 2018, iso3 - vybral jsem rok 2019, protože je problematické 
+z důvodu koeficientu gini zvolit něco vhodného za rok. Nehledě na další koeficient median_age_2018, kdy je určitě konzistentní vybírat ekonomická data
+až po tomto roce */
 
--- tabulka náboženství - nesmyslná data, která vyjadřují roky v budoucnu. Jako joke jsem si prohlédl Českou republiku a ateismus stále vítězí...
--- nakonec použiji jako základ cvičení, které jsme dělali, nemá smysl vymýšlet kolo...
+CREATE OR REPLACE TABLE t_jiri_zachar_variable_country AS
+SELECT
+	c.country ,
+	c.population ,
+	round ((e.population / c.surface_area),
+	3) AS 'population density',
+	e.GDP,
+	e.gini ,
+	e.mortaliy_under5 ,
+	c.median_age_2018 ,
+	c.iso3 
+	FROM
+	countries c
+LEFT JOIN economies e 
+ON
+	c.country = e.country
+WHERE e.`year` = 2019
+	;
+
+SELECT 
+*
+FROM 
+t_jiri_zachar_variable_country tjzvc 
+
+
+/* tabulka náboženství - nesmyslná data, která vyjadřují roky v budoucnu. Jako joke jsem si prohlédl Českou republiku a ateismus stále vítězí...
+ nakonec použiji jako základ cvičení, které jsme dělali, nemá smysl vymýšlet kolo...czech republic */
+CREATE OR REPLACE TABLE t_jiri_zachar_religion
 SELECT r.country , r.religion , 
     round( r.population / r2.total_population_2020 * 100, 2 ) as religion_share_2020
 FROM religions r 
@@ -173,9 +209,22 @@ JOIN (
     AND r.population > 0
 ;
 
--- tabulka rozdíl mezi očekávanou dobou dožití v roce 1965 a 2015
+-- náboženství a ekonomiky přes joiny
+CREATE OR REPLACE TABLE t_jiri_zachar_variable_country_religion
+SELECT 
+tjzvc.*,
+tjzr.religion ,
+tjzr.religion_share_2020 
+FROM 
+t_jiri_zachar_religion tjzr 
+LEFT JOIN t_jiri_zachar_variable_country tjzvc 
+ON tjzr.country = tjzvc.country 
+;
+
+-- tabulka rozdíl mezi očekávanou dobou dožití v roce 1965 a 2015 - czech republic
+CREATE OR REPLACE TABLE t_jiri_zachar_life_expectancy
 SELECT a.country, a.life_exp_1965 , b.life_exp_2015,
-    round( b.life_exp_2015 - a.life_exp_1965, 2 ) as life_exp_diff
+    round( b.life_exp_2015 - a.life_exp_1965, 2 ) as life_exp_diff_1965_2015
 FROM (
     SELECT le.country , le.life_expectancy as life_exp_1965
     FROM life_expectancy le 
@@ -187,6 +236,21 @@ FROM (
     ) b
     ON a.country = b.country
 ;
+
+CREATE OR REPLACE TABLE t_jiri_zachar_variable_country_religion_life_expectancy
+SELECT 
+tjzvcr.*,
+tjzle.life_exp_diff_1965_2015 
+FROM 
+t_jiri_zachar_variable_country_religion tjzvcr 
+LEFT JOIN t_jiri_zachar_life_expectancy tjzle 
+ON tjzvcr.country = tjzle.country 
+;
+
+SELECT 
+*
+FROM
+t_jiri_zachar_variable_country_religion_life_expectancy tjzvcrle 
 
 -- tabulka pro průměrnou denní teplotu
 SELECT 
