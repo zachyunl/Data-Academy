@@ -237,6 +237,7 @@ FROM (
     ON a.country = b.country
 ;
 
+-- joinutí life_expectancy na zbytek ekonomických ukazatelů
 CREATE OR REPLACE TABLE t_jiri_zachar_variable_country_religion_life_expectancy
 SELECT 
 tjzvcr.*,
@@ -245,14 +246,16 @@ FROM
 t_jiri_zachar_variable_country_religion tjzvcr 
 LEFT JOIN t_jiri_zachar_life_expectancy tjzle 
 ON tjzvcr.country = tjzle.country 
+WHERE tjzvcr.country IS NOT NULL 
 ;
 
 SELECT 
 *
 FROM
 t_jiri_zachar_variable_country_religion_life_expectancy tjzvcrle 
+GROUP BY country 
 
--- tabulka pro průměrnou denní teplotu
+-- tabulka pro průměrnou denní teplotu, navázat přes tabulku cities (Prague)
 SELECT 
 c.country, c.date, c.confirmed , lt.iso3 , c2.capital_city , w.max_temp
 FROM covid19_basic as c
@@ -270,25 +273,89 @@ JOIN ( SELECT w.city , w.date , max(w.temp) as max_temp
 ORDER BY c.date desc
 ;
 
+/* v tabulce weather je pouze 34 měst, zadání na výpočet průměrné denní teploty je diskutabilní, protože meteorologická metodika
+definuje výpočet takto: Odečet teploty vzduchu se provádí každý den v klimatologických termínech, tedy vždy v 7:00, 14:00 a 21:00 SEČ
+ (resp. 8:00, 15:00 a 22:00 SELČ). Naměřená teplota se uvádí v Celsiových stupních (°C). 
+ Z naměřených hodnot se pak váženým průměrem (7 + 14 + 2*21)/4 určuje průměrná denní teplota. Toto platí pro ČR, každý kontinent a stát
+ to má trochu jinak. Pro zjednodušení zde denní teploty budu uvažovat 9,12,15 a 18hod v příslušném dni*/
+
+-- naplnění základní tabulky z weather 
+CREATE OR REPLACE TABLE 
+t_jiri_zachar_weather
 SELECT 
-c.country, c.date, c.confirmed , lt.iso3 , c2.capital_city #, w.max_temp
-FROM covid19_basic as c
-JOIN lookup_table lt 
-    on c.country = lt.country 
-    and c.country = 'Czechia'
-    and month(c.date) = 10
-    JOIN countries c2
-    on lt.iso3 = c2.iso3
-JOIN ( SELECT w.city , w.date , max(w.temp) as max_temp
-        FROM weather w 
-        ) w
-    on c2.capital_city = w.city 
-    and c.date = w.date
-ORDER BY c.date desc
+`date` ,
+city,
+time,
+temp,
+gust,
+rain
+FROM 
+weather w 
+WHERE city IS NOT NULL 
+; 
+
+-- konverze jednotek na integer a decimal z důvodu dalších počtů, teploty deště a nárazového větru
+CREATE OR REPLACE TABLE 
+t_jiri_zachar_weather_conversion
+SELECT 
+*,
+CAST (trim(TRAILING '°c'FROM temp) AS integer) AS 'conversion/temp',
+CAST (trim(TRAILING 'km/h'FROM gust) AS integer) AS 'conversion/gust',
+CAST (trim(TRAILING 'mm'FROM rain)AS decimal(10,1)) AS 'conversion/rain'
+FROM 
+t_jiri_zachar_weather tjzw 
 ;
 
-SELECT 
+-- tabulka pro průměrnou denní teplotu
+CREATE OR REPLACE TABLE 
+t_jiri_zachar_weather_daily
+SELECT
+*,
+CASE WHEN time = '09:00' THEN 1
+WHEN time = '12:00' THEN 1
+WHEN time = '15:00' THEN 1
+WHEN time = '18:00' THEN 1
+ELSE 0
+END AS daily
+FROM 
+t_jiri_zachar_weather_conversion
+;
+
+
+-- výpočet průměrné teploty
+CREATE OR REPLACE TABLE 
+t_jiri_zachar_weather_daily_avg_temp
+SELECT
+*,
+sum(`conversion/temp`) /4 AS 'avg/temp'
+FROM
+t_jiri_zachar_weather_daily tjzwd 
+WHERE daily = 1
+GROUP BY date , city 
+;
+
+
+SELECT
 *
 FROM 
-covid19_basic cb 
-WHERE country = 'czechia'
+t_jiri_zachar_weather_conversion tjzwc 
+JOIN 
+t_jiri_zachar_weather_daily_avg_temp tjzwdat 
+ON tjzwc.`date` = tjzwdat.`date` 
+AND tjzwc.city = tjzwdat.city 
+
+-- počet hodin v daném dni, kdy byly srážky nenulové
+SELECT 
+*,
+CASE WHEN rain > 0.0 THEN 1
+ELSE 0 END AS 'rain/ratio'
+FROM 
+
+-- grupování dle datumu
+SELECT
+date (date),
+city,
+`avg/temp` 
+FROM
+t_jiri_zachar_weather_daily_avg_temp tjzwdat 
+;
