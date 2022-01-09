@@ -1,4 +1,14 @@
-/*SQL
+/* 
+Ahoj Williame,
+přikládám Ti požadovanou výslednou tabulku pro Tvoje potřeby t_jiri_zachar_projekt_SQL_final. Pokud Ti nebudou vyhovovat některé údaje, tak mě prosím kontaktuj a 
+data upravíme dle potřeby. V přiloženém skriptu vidíš můj postup i s poznámkami k jednotlivým krokům. Vše jsem připravil, tak aby se finální tabulka vytvořila přes ALT+X.
+Do finální tabulky jsem zakomponoval i data pokud v některém řádku a sloupci chyběly zdrojové údaje. Např. koeficient gini má dosti málo položek v některých letech a
+u některých států.
+Obdobné údaje jsou o počasí, kde lze pracovat pouze se 34 státy apod. Přišlo mi, ale škoda, že bych udělal pouze agregaci na finální tabulku z dat, kde jsou všechny údaje.
+
+Jirka Zachař
+ 
+SQL
 CVIČENÍ PRO DATOVOU AKADEMII​/PROJEKTY​/SQL
 Zadání: Od Vašeho kolegy statistika jste obdrželi následující email:
 
@@ -35,18 +45,6 @@ S pozdravem, Student (a.k.a. William Gosset)
 
 Výstup: Pomozte Vašemu kolegovi s daným úkolem. Výstupem by měla být tabulka na databázi, ze které se požadovaná data dají získat jedním selectem. Tabulku pojmenujte t_{jméno}_{příjmení}_projekt_SQL_final. Na svém GitHub účtu vytvořte repozitář (může být soukromý), kam uložíte všechny informace k projektu - hlavně SQL skript generující výslednou tabulku, popis mezivýsledků, informace o výstupních datech (například kde chybí hodnoty apod.). Případné pomocné tabulky neukládejte na DB jako view! Vždy vytvořte novou tabulku (z důvodu anonymity).
 */
-
-/*Řešení bude přes dočasné výpočetní tabulky až po naplnění finální dle zadání. Přes Alt+X se postupně vykoná kompletní řešení
- *
- */
-
-
-DROP TABLE
-t_jiri_zachar_confirmed ,
-t_jiri_zachar_confirmed_weekend 
-t_jiri_zachar_confirmed_tests
-t_jiri_zachar_confirmed_tests_population
-;
 
 -- vytvoření základní tabulky pouze potvrzených případů - datum, země, potvrzené případy, iso3 z důvodu joinování na další tabulky
 CREATE OR REPLACE
@@ -129,15 +127,9 @@ FROM
 	t_jiri_zachar_confirmed_tests_population_1m tjzctpm 
 ;
 
-SELECT 
-*
-FROM 
-t_jiri_zachar_confirmed_weekend tjzcw 
-ORDER BY `date` 
 
-
--- přestupný rok s chybou v letech 2100, 2200 apod.
-CREATE TABLE t_jiri_zachar_country_leap AS
+-- tvorba tabulky pro zakódování ročního období, přestupný rok s chybou v letech 2100, 2200, což není důležité pro tento projekt apod.
+CREATE OR REPLACE TABLE t_jiri_zachar_confirmed_weekend_leap AS
 SELECT 
 *,
 YEAR (date),
@@ -145,22 +137,90 @@ CASE WHEN YEAR (date) MOD 4 = 0 THEN 1
 ELSE 0 
 END AS leap
 FROM 
-t_jiri_zachar_country tjzc 
-GROUP BY country , date
+t_jiri_zachar_confirmed_weekend 
+;
 
--- doplnění sloupce roční období v rámci zjednodušení neberu v potaz rozdíl jižní a severní polokouli a dále nepřepočítávám slunovrat na konkrétní rok
--- jaro je od 21.3-20.6, léto 21.6-22.10, podzim 23.10-20.12, zima 21.12-20.3
--- 20.3 - 79, 21.3. - 80, 20.6 - 172, 21.6 - 173, 22.10 - 296, 23.10 - 297, 20.12 - 355, 21.12 - 356
-SELECT
-*
-/*CASE WHEN leap = 0 and dayofyear(date) < 81 THEN 0
-CASE WHEN leap = 1 AND dayofyear(date) < 80 THEN 0
-CASE WHEN leap = 0 AND dayofyear(date) > 80  AND dayofyear(date) < 172 THEN 1
-CASE WHEN leap = 1 AND dayofyear(date) > 81  AND dayofyear(date) < 173 THEN 1
-END AS seasons*/ 
+-- doplnění země, kde se nachází severní polokoule, jižní nebo rovník
+CREATE OR REPLACE TABLE 
+t_jiri_zachar_n_s_hemisphere
+SELECT country, north, south, iso3 ,
+    CASE WHEN south > 0 THEN 'north'
+        WHEN north < 0 THEN 'south'
+        ELSE 'equator'
+        END AS 'N_S_hemisphere'
+FROM countries 
+WHERE north IS NOT NULL 
+    AND south IS NOT NULL
+;
+
+-- spojení tabulek pro přidání sloupce N_S_hemisphere
+CREATE OR REPLACE TABLE 
+t_jiri_zachar_confirmed_weekend_leap_n_s_hemisphere
+SELECT 
+tjzcwl.*,
+tjznsh.N_S_hemisphere 
 FROM 
-t_jiri_zachar_country_leap 
-GROUP BY country , date
+t_jiri_zachar_confirmed_weekend_leap tjzcwl 
+JOIN t_jiri_zachar_n_s_hemisphere tjznsh 
+ON tjzcwl.iso3 = tjznsh.iso3 
+;
+
+/* doplnění sloupce roční období v rámci zjednodušení nepřepočítávám slunovrat na konkrétní rok
+ jaro je od 21.3-20.6, léto 21.6-22.10, podzim 23.10-20.12, zima 21.12-20.3 na severní polokouli, na jižní to bude zrcadlově a rovník bude pouze léto
+ neberu v potaz další roční období jako např. období monzunů, deště, sucha apod.
+ 0 - zima
+ 1 - jaro
+ 2 - léto
+ 3 - podzim
+ 20.3 - 79, 21.3. - 80, 20.6 - 172, 21.6 - 173, 22.10 - 296, 23.10 - 297, 20.12 - 355, 21.12 - 356*/
+
+CREATE OR REPLACE TABLE 
+t_jiri_zachar_confirmed_weekend_season
+SELECT
+*,
+CASE WHEN N_S_hemisphere = 'north' AND leap = 1 AND dayofyear(date) < 81 THEN 0
+ WHEN N_S_hemisphere = 'north' AND leap = 0 AND dayofyear(date) < 80 THEN 0
+ WHEN N_S_hemisphere = 'south' AND leap = 1 AND dayofyear(date) < 81 THEN 2
+ WHEN N_S_hemisphere = 'south' AND leap = 0 AND dayofyear(date) < 80 THEN 2
+ WHEN N_S_hemisphere = 'north' AND leap = 1 AND dayofyear(date) >= 81 AND dayofyear(date) < 173 THEN 1
+ WHEN N_S_hemisphere = 'north' AND leap = 0 AND dayofyear(date) >= 80 AND dayofyear(date) < 172 THEN 1
+ WHEN N_S_hemisphere = 'south' AND leap = 1 AND dayofyear(date) >= 81 AND dayofyear(date) < 173 THEN 3
+ WHEN N_S_hemisphere = 'south' AND leap = 0 AND dayofyear(date) >= 80 AND dayofyear(date) < 172 THEN 3
+ WHEN N_S_hemisphere = 'north' AND leap = 1 AND dayofyear(date) >= 173 AND dayofyear(date) < 297 THEN 2
+ WHEN N_S_hemisphere = 'north' AND leap = 0 AND dayofyear(date) >= 172 AND dayofyear(date) < 296 THEN 2
+ WHEN N_S_hemisphere = 'south' AND leap = 1 AND dayofyear(date) >= 173 AND dayofyear(date) < 297 THEN 0
+ WHEN N_S_hemisphere = 'south' AND leap = 0 AND dayofyear(date) >= 172 AND dayofyear(date) < 296 THEN 0
+ WHEN N_S_hemisphere = 'north' AND leap = 1 AND dayofyear(date) >= 297 AND dayofyear(date) < 356 THEN 3
+ WHEN N_S_hemisphere = 'north' AND leap = 0 AND dayofyear(date) >= 296 AND dayofyear(date) < 355 THEN 3
+ WHEN N_S_hemisphere = 'south' AND leap = 1 AND dayofyear(date) >= 297 AND dayofyear(date) < 356 THEN 1
+ WHEN N_S_hemisphere = 'south' AND leap = 0 AND dayofyear(date) >= 296 AND dayofyear(date) < 355 THEN 1
+ WHEN N_S_hemisphere = 'north' AND leap = 1 AND dayofyear(date) >= 356 THEN 0
+ WHEN N_S_hemisphere = 'north' AND leap = 0 AND dayofyear(date) >= 355 THEN 0
+ WHEN N_S_hemisphere = 'south' AND leap = 1 AND dayofyear(date) >= 356 THEN 2
+ WHEN N_S_hemisphere = 'south' AND leap = 0 AND dayofyear(date) >= 355 THEN 2
+ WHEN N_S_hemisphere = 'equator' THEN 2
+END AS season
+FROM 
+t_jiri_zachar_confirmed_weekend_leap_n_s_hemisphere 
+;
+
+-- finální tabulka s údaji o časových proměnných
+CREATE OR REPLACE TABLE 
+t_jiri_zachar_time_variable_final
+SELECT 
+date,
+country ,
+population ,
+confirmed ,
+`confirmed/1M pop` ,
+tests_performed ,
+`test/1M pop` ,
+weekend ,
+season ,
+iso3 
+FROM 
+t_jiri_zachar_confirmed_weekend_season tjzcws 
+;
 
 /* propojení tabulek země a ekonomika, výpočet hustoty zalidnění dle jednotlivých let bere se v potaz pouze změna počtu obyvatel, nikoliv velikost území
  HDP na obyvatele, GINI koeficient, dětská úmrtnost, medián věku obyvatel v roce 2018, iso3 - vybral jsem rok 2019, protože je problematické 
@@ -184,16 +244,11 @@ LEFT JOIN economies e
 ON
 	c.country = e.country
 WHERE e.`year` = 2019
-	;
-
-SELECT 
-*
-FROM 
-t_jiri_zachar_variable_country tjzvc 
-
+;
 
 /* tabulka náboženství - nesmyslná data, která vyjadřují roky v budoucnu. Jako joke jsem si prohlédl Českou republiku a ateismus stále vítězí...
  nakonec použiji jako základ cvičení, které jsme dělali, nemá smysl vymýšlet kolo...czech republic */
+
 CREATE OR REPLACE TABLE t_jiri_zachar_religion
 SELECT r.country , r.religion , 
     round( r.population / r2.total_population_2020 * 100, 2 ) as religion_share_2020
@@ -238,7 +293,7 @@ FROM (
 ;
 
 -- joinutí life_expectancy na zbytek ekonomických ukazatelů
-CREATE OR REPLACE TABLE t_jiri_zachar_variable_country_religion_life_expectancy
+CREATE OR REPLACE TABLE t_jiri_zachar_country_economics_final
 SELECT 
 tjzvcr.*,
 tjzle.life_exp_diff_1965_2015 
@@ -249,35 +304,11 @@ ON tjzvcr.country = tjzle.country
 WHERE tjzvcr.country IS NOT NULL 
 ;
 
-SELECT 
-*
-FROM
-t_jiri_zachar_variable_country_religion_life_expectancy tjzvcrle 
-GROUP BY country 
-
--- tabulka pro průměrnou denní teplotu, navázat přes tabulku cities (Prague)
-SELECT 
-c.country, c.date, c.confirmed , lt.iso3 , c2.capital_city , w.max_temp
-FROM covid19_basic as c
-JOIN lookup_table lt 
-    on c.country = lt.country 
-    and c.country = 'France'
-    and month(c.date) = 10
-    JOIN countries c2
-    on lt.iso3 = c2.iso3
-JOIN ( SELECT w.city , w.date , max(w.temp) as max_temp
-        FROM weather w 
-        GROUP BY w.city, w.date) w
-    on c2.capital_city = w.city 
-    and c.date = w.date
-ORDER BY c.date desc
-;
-
 /* v tabulce weather je pouze 34 měst, zadání na výpočet průměrné denní teploty je diskutabilní, protože meteorologická metodika
 definuje výpočet takto: Odečet teploty vzduchu se provádí každý den v klimatologických termínech, tedy vždy v 7:00, 14:00 a 21:00 SEČ
  (resp. 8:00, 15:00 a 22:00 SELČ). Naměřená teplota se uvádí v Celsiových stupních (°C). 
  Z naměřených hodnot se pak váženým průměrem (7 + 14 + 2*21)/4 určuje průměrná denní teplota. Toto platí pro ČR, každý kontinent a stát
- to má trochu jinak. Pro zjednodušení zde denní teploty budu uvažovat 9,12,15 a 18hod v příslušném dni*/
+ to má trochu jinak. Pro zjednodušení tohoto projektu zde denní teploty budu uvažovat 9,12,15 a 18hod v příslušném dni*/
 
 -- naplnění základní tabulky z weather 
 CREATE OR REPLACE TABLE 
@@ -301,7 +332,7 @@ SELECT
 *,
 CAST (trim(TRAILING '°c'FROM temp) AS integer) AS 'conversion/temp',
 CAST (trim(TRAILING 'km/h'FROM gust) AS integer) AS 'conversion/gust',
-CAST (trim(TRAILING 'mm'FROM rain)AS decimal(10,1)) AS 'conversion/rain'
+CAST (trim(TRAILING 'mm'FROM rain)AS decimal (3,1)) AS 'conversion/rain'
 FROM 
 t_jiri_zachar_weather tjzw 
 ;
@@ -321,8 +352,7 @@ FROM
 t_jiri_zachar_weather_conversion
 ;
 
-
--- výpočet průměrné teploty
+-- výpočet průměrné teploty s tím, že beru v potaz hodnoty v 9, 12, 15 a 18hod a vypočítám z nich průměr
 CREATE OR REPLACE TABLE 
 t_jiri_zachar_weather_daily_avg_temp
 SELECT
@@ -334,28 +364,161 @@ WHERE daily = 1
 GROUP BY date , city 
 ;
 
-
+-- joinutí tabulky s průměrnou denní teplotou a výběrem z weather
+CREATE OR REPLACE TABLE 
+t_jiri_zachar_weather_daily_conversion
 SELECT
-*
+tjzwc.date,
+tjzwc.city,
+tjzwc.`time` ,
+tjzwc.`conversion/rain` ,
+tjzwc.`conversion/gust` ,
+tjzwdat.`avg/temp` 
 FROM 
 t_jiri_zachar_weather_conversion tjzwc 
 JOIN 
 t_jiri_zachar_weather_daily_avg_temp tjzwdat 
 ON tjzwc.`date` = tjzwdat.`date` 
 AND tjzwc.city = tjzwdat.city 
+;
 
 -- počet hodin v daném dni, kdy byly srážky nenulové
+CREATE OR REPLACE TABLE 
+t_jiri_zachar_weather_rainwithoutnull
 SELECT 
 *,
-CASE WHEN rain > 0.0 THEN 1
-ELSE 0 END AS 'rain/ratio'
+CASE WHEN `conversion/rain` > 0 THEN 1
+ELSE 0 END AS 'daily'
 FROM 
+t_jiri_zachar_weather_daily_conversion
+;
 
--- grupování dle datumu
+-- naplnění tabulky s přepočtem celkových hodin za den, kdy jsou srážky nenulové
+CREATE OR REPLACE TABLE 
+t_jiri_zachar_weather_rainwithoutnull_final
 SELECT
-date (date),
-city,
-`avg/temp` 
+*,
+sum(daily)*3 AS 'day/rain'
 FROM
-t_jiri_zachar_weather_daily_avg_temp tjzwdat 
+t_jiri_zachar_weather_rainwithoutnull
+GROUP BY date, city
+;
+
+-- joinutí tabulky s průměrnou denní teplotou a tabulkou kdy jsou srážky nenulové
+CREATE OR REPLACE TABLE 
+t_jiri_zachar_weather_daily_conversion_rain
+SELECT
+tjzwc.date,
+tjzwc.city,
+tjzwc.`time` ,
+tjzwc.`conversion/gust` ,
+tjzwrf.`avg/temp` ,
+tjzwrf.`day/rain` 
+FROM 
+t_jiri_zachar_weather_conversion tjzwc 
+JOIN 
+t_jiri_zachar_weather_rainwithoutnull_final tjzwrf 
+ON tjzwc.`date` = tjzwrf.`date` 
+AND tjzwc.city = tjzwrf.city 
+;
+
+-- maximální síla větru během dne
+CREATE OR REPLACE TABLE 
+t_jiri_zachar_weather_daily_conversion_rain_gust
+SELECT 
+*,
+max(`conversion/gust`) AS 'day/gust'
+FROM 
+t_jiri_zachar_weather_daily_conversion_rain
+GROUP BY date, city
+;
+
+-- joinutí tabulky s průměrnou denní teplotou, počet hodin kdy byly srážky nenulové a tabulkou s maximální silou větru
+CREATE OR REPLACE TABLE 
+t_jiri_zachar_weather_temp_rain_gust
+SELECT
+tjzwc.date,
+tjzwc.city,
+tjzwc.`time` ,
+tjzwdcrg.`avg/temp` ,
+tjzwdcrg.`day/rain` ,
+tjzwdcrg.`day/gust` 
+FROM 
+t_jiri_zachar_weather_conversion tjzwc 
+JOIN 
+t_jiri_zachar_weather_daily_conversion_rain_gust tjzwdcrg 
+ON tjzwc.`date` = tjzwdcrg.`date` 
+AND tjzwc.city = tjzwdcrg.city 
+;
+
+/* navázání země a zkratky iso na tabulku, kde jsou vypočítány hodnoty z weather přes tabulku cities z důvodu toho, že města mají rozdílné názvy
+např. Praha vs Prague */
+CREATE OR REPLACE TABLE 
+t_jiri_zachar_weather_semifinal
+SELECT 
+tjzwtrg.*,
+c.country ,
+c.iso3 
+FROM 
+t_jiri_zachar_weather_temp_rain_gust tjzwtrg 
+JOIN cities c 
+ON tjzwtrg.city = c.city
+AND c.capital = 'primary'
+ORDER BY tjzwtrg.`date` 
+;
+
+CREATE OR REPLACE TABLE 
+t_jiri_zachar_weather_final 
+SELECT 
+*
+FROM 
+t_jiri_zachar_weather_semifinal tjzws 
+WHERE date > '2020-01-22'
+GROUP BY date , city
+
+-- spojení tabulek časových a ekonomických proměnných datum od 2020-01-23-2021-05-23
+CREATE OR REPLACE TABLE 
+t_jiri_zachar_projekt_SQL_semifinal
+SELECT 
+tjztvf.*,
+tjzcef.`population density` ,
+tjzcef.GDP ,
+tjzcef.gini ,
+tjzcef.mortaliy_under5 ,
+tjzcef.median_age_2018 ,
+tjzcef.religion ,
+tjzcef.religion_share_2020 ,
+tjzcef.life_exp_diff_1965_2015 
+FROM 
+t_jiri_zachar_time_variable_final tjztvf 
+JOIN t_jiri_zachar_country_economics_final tjzcef 
+ON tjztvf.iso3 = tjzcef.iso3 
+;
+
+
+CREATE OR REPLACE TABLE 
+t_jiri_zachar_projekt_SQL_final
+SELECT 
+tjzpss.*,
+tjzwf.*
+FROM 
+t_jiri_zachar_projekt_sql_semifinal tjzpss 
+LEFT JOIN t_jiri_zachar_weather_final tjzwf 
+ON tjzpss.date = tjzwf.`date` 
+AND tjzpss.iso3 = tjzwf.iso3 
+WHERE tjzpss.date = '2020-02-01'
+
+
+
+
+JOIN t_jiri_zachar_weather_final tjzwf 
+ON tjztvf.iso3 = tjzwf.iso3 
+AND tjztvf.`date` = tjzwf.`date` 
+
+
+DROP TABLE
+t_jiri_zachar_confirmed ,
+t_jiri_zachar_confirmed_weekend 
+t_jiri_zachar_confirmed_tests
+t_jiri_zachar_confirmed_tests_population
 ;
