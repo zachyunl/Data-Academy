@@ -124,7 +124,7 @@ SELECT
 		ELSE 0
 	END AS weekend
 FROM
-	t_jiri_zachar_confirmed_tests_population_1m tjzctpm 
+	t_jiri_zachar_confirmed_tests_population_1M tjzctpm 
 ;
 
 
@@ -475,6 +475,7 @@ FROM
 t_jiri_zachar_weather_semifinal tjzws 
 WHERE date > '2020-01-22'
 GROUP BY date , city
+;
 
 -- spojení tabulek časových a ekonomických proměnných datum od 2020-01-23-2021-05-23
 CREATE OR REPLACE TABLE 
@@ -495,30 +496,67 @@ JOIN t_jiri_zachar_country_economics_final tjzcef
 ON tjztvf.iso3 = tjzcef.iso3 
 ;
 
-
+-- vytvoření předfinální tabulky neseřazené
 CREATE OR REPLACE TABLE 
-t_jiri_zachar_projekt_SQL_final
+t_jiri_zachar_projekt_SQL_prefinal
 SELECT 
 tjzpss.*,
-tjzwf.*
+tjzwf.`avg/temp` ,
+tjzwf.`day/rain` ,
+tjzwf.`day/gust` 
 FROM 
-t_jiri_zachar_projekt_sql_semifinal tjzpss 
+t_jiri_zachar_projekt_SQL_semifinal tjzpss 
 LEFT JOIN t_jiri_zachar_weather_final tjzwf 
 ON tjzpss.date = tjzwf.`date` 
 AND tjzpss.iso3 = tjzwf.iso3 
-WHERE tjzpss.date = '2020-02-01'
+;
 
+-- seřazení finální tabulky 
+CREATE OR REPLACE TABLE 
+t_jiri_zachar_projekt_SQL_final
+SELECT 
+*
+FROM 
+t_jiri_zachar_projekt_SQL_prefinal
+ORDER BY date, country
+;
 
+/*SELECT 
+*
+FROM 
+t_jiri_zachar_projekt_SQL_final
+*/
 
-
-JOIN t_jiri_zachar_weather_final tjzwf 
-ON tjztvf.iso3 = tjzwf.iso3 
-AND tjztvf.`date` = tjzwf.`date` 
-
-
+-- vyčištění pomocných tabulek
 DROP TABLE
 t_jiri_zachar_confirmed ,
-t_jiri_zachar_confirmed_weekend 
-t_jiri_zachar_confirmed_tests
-t_jiri_zachar_confirmed_tests_population
+t_jiri_zachar_confirmed_iso ,
+t_jiri_zachar_confirmed_tests ,
+t_jiri_zachar_confirmed_tests_population ,
+t_jiri_zachar_confirmed_tests_population_1M ,
+t_jiri_zachar_confirmed_weekend ,
+t_jiri_zachar_confirmed_weekend_leap ,
+t_jiri_zachar_confirmed_weekend_leap_n_s_hemisphere ,
+t_jiri_zachar_confirmed_weekend_season ,
+t_jiri_zachar_country_economics_final ,
+t_jiri_zachar_life_expectancy ,
+t_jiri_zachar_n_s_hemisphere ,
+t_jiri_zachar_projekt_SQL_prefinal ,
+t_jiri_zachar_projekt_SQL_semifinal ,
+t_jiri_zachar_religion ,
+t_jiri_zachar_time_variable_final ,
+t_jiri_zachar_variable_country ,
+t_jiri_zachar_variable_country_religion ,
+t_jiri_zachar_weather ,
+t_jiri_zachar_weather_conversion ,
+t_jiri_zachar_weather_daily ,
+t_jiri_zachar_weather_daily_avg_temp ,
+t_jiri_zachar_weather_daily_conversion ,
+t_jiri_zachar_weather_daily_conversion_rain ,
+t_jiri_zachar_weather_daily_conversion_rain_gust ,
+t_jiri_zachar_weather_final ,
+t_jiri_zachar_weather_rainwithoutnull ,
+t_jiri_zachar_weather_rainwithoutnull_final ,
+t_jiri_zachar_weather_semifinal ,
+t_jiri_zachar_weather_temp_rain_gust 
 ;
